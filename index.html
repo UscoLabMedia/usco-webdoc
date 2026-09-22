@@ -5,10 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>USCO WebDoc - Recorrido Interactivo</title>
   <style>
-    * { box-sizing: border-box; touch-action: none; } /* Bloquea el scroll nativo en móviles */
+    * { box-sizing: border-box; }
     html, body {
       margin: 0; padding: 0; width: 100%; height: 100%;
       overflow: hidden; background: #000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none;
     }
 
     /* PANTALLA DE INICIO (LANDING / COVER) */
@@ -66,22 +67,29 @@
       width: 90%; max-width: 450px;
     }
 
+    /* VISOR 2D Y CAPA DE GESTOS TÁCTILES */
     #visor-caminata {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
       object-fit: contain; z-index: 1; background: #000;
-      user-select: none; -webkit-user-drag: none;
+      pointer-events: none;
     }
 
+    #capa-touch {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      z-index: 2; touch-action: none;
+    }
+
+    /* ESCENA A-FRAME */
     a-scene {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-      z-index: 2; pointer-events: auto;
+      z-index: 3; pointer-events: none;
     }
 
     #modal-youtube {
       display: none; position: absolute; top: 50%; left: 50%;
       transform: translate(-50%, -50%); width: 90%; max-width: 800px;
       height: 250px; background: #000; border: 2px solid #EF2D5E;
-      border-radius: 12px; z-index: 2000; box-shadow: 0 0 30px rgba(239, 45, 94, 0.5);
+      border-radius: 12px; z-index: 4000; box-shadow: 0 0 30px rgba(239, 45, 94, 0.5);
     }
 
     @media (min-height: 500px) { #modal-youtube { height: 400px; } }
@@ -91,7 +99,7 @@
     #btn-cerrar-video {
       position: absolute; top: -15px; right: -15px; background: #EF2D5E;
       color: white; border: none; width: 35px; height: 35px; border-radius: 50%;
-      font-weight: bold; cursor: pointer; font-size: 16px; z-index: 2001;
+      font-weight: bold; cursor: pointer; font-size: 16px; z-index: 4001;
     }
   </style>
   <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
@@ -106,7 +114,7 @@
     
     <div class="instrucciones-grid">
       <div class="item-instruccion">🖱️ Scroll en PC</div>
-      <div class="item-instruccion">📱 Desliza en pantalla táctil</div>
+      <div class="item-instruccion">📱 Desliza verticalmente en celular</div>
     </div>
 
     <button id="btn-entrar" onclick="iniciarExperiencia()">ENTRAR AL RECORRIDO</button>
@@ -115,6 +123,9 @@
   <div id="hud">Foto 1 de 10 | Desliza el dedo verticalmente para caminar</div>
 
   <img id="visor-caminata" src="1.png" alt="Caminata">
+  
+  <!-- Capa invisible para capturar gestos de pantalla -->
+  <div id="capa-touch"></div>
 
   <div id="modal-youtube">
     <button id="btn-cerrar-video" onclick="cerrarVideo()">✕</button>
@@ -135,7 +146,8 @@
     </a-entity>
 
     <a-entity id="rig">
-      <a-camera look-controls="pointerLockEnabled: false">
+      <!-- Deshabilitar touchEnabled en look-controls para evitar conflictos -->
+      <a-camera look-controls="pointerLockEnabled: false; touchEnabled: false">
         <a-cursor color="#EF2D5E" raycaster="objects: .clickable" fuse="false"></a-cursor>
       </a-camera>
     </a-entity>
@@ -156,6 +168,7 @@
 
     const pantallaInicio = document.getElementById('pantalla-inicio');
     const imgVisor = document.getElementById('visor-caminata');
+    const capaTouch = document.getElementById('capa-touch');
     const hotspot = document.getElementById('hotspot-video');
     const btnVideo = document.getElementById('btn-video');
     const txtTitulo = document.getElementById('txt-titulo-video');
@@ -188,10 +201,12 @@
         hotspot.setAttribute('visible', 'true');
         btnVideo.classList.add('clickable');
         txtTitulo.setAttribute('value', mapaVideos[pasoActual].texto);
+        document.querySelector('a-scene').style.pointerEvents = 'auto';
         hud.innerText = `Foto ${pasoActual} de ${totalPasos} | Toca el botón para abrir el ${mapaVideos[pasoActual].texto}`;
       } else {
         hotspot.setAttribute('visible', 'false');
         btnVideo.classList.remove('clickable');
+        document.querySelector('a-scene').style.pointerEvents = 'none';
         hud.innerText = `Foto ${pasoActual} de ${totalPasos} | Desliza hacia arriba/abajo para avanzar`;
       }
 
@@ -219,30 +234,30 @@
       else if (e.deltaY < 0) cambiarFotograma(-1);
     });
 
-    // CAPTURA DE GESTOS TÁCTILES EN CELULARES Y TABLETS
+    // CAPTURA DIRECTA DE GESTOS EN CAPA TOUCH
     let startY = 0;
 
-    window.addEventListener('touchstart', (e) => {
+    capaTouch.addEventListener('touchstart', (e) => {
       if (!experienciaIniciada) return;
       startY = e.touches[0].clientY;
-    }, { passive: true });
+    }, { passive: false });
 
-    window.addEventListener('touchmove', (e) => {
+    capaTouch.addEventListener('touchmove', (e) => {
       if (!experienciaIniciada || videoAbierto) return;
+      e.preventDefault(); // Bloquea el scroll nativo del celular
       
       let endY = e.touches[0].clientY;
       let diferenciaY = startY - endY;
 
-      // Umbral de sensibilidad para el gesto (30px)
-      if (Math.abs(diferenciaY) > 30) {
+      if (Math.abs(diferenciaY) > 25) {
         if (diferenciaY > 0) {
-          cambiarFotograma(1);  // Deslizar dedo hacia arriba -> Avanza
+          cambiarFotograma(1);  // Deslizar hacia arriba -> avanza
         } else {
-          cambiarFotograma(-1); // Deslizar dedo hacia abajo -> Retrocede
+          cambiarFotograma(-1); // Deslizar hacia abajo -> retrocede
         }
-        startY = endY; // Reinicia el punto de origen
+        startY = endY;
       }
-    }, { passive: true });
+    }, { passive: false });
   </script>
 
 </body>
