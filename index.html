@@ -136,6 +136,9 @@
 </head>
 <body>
 
+  <!-- ELEMENTO AUDIO AMBIENTE -->
+  <audio id="audio-ambiente" src="audiofondo.m4a" loop preload="auto"></audio>
+
   <!-- PANTALLA DE INICIO -->
   <div id="pantalla-inicio">
     <div class="meta-tag">Universidad Surcolombiana</div>
@@ -145,6 +148,7 @@
     <div class="instrucciones-grid">
       <div class="item-instruccion">🖱️ Scroll en PC</div>
       <div class="item-instruccion">📱 Desliza en pantalla táctil</div>
+      <div class="item-instruccion">🎧 Usa auriculares para audio ambiente</div>
     </div>
 
     <button id="btn-entrar" onclick="iniciarExperiencia()">ENTRAR AL RECORRIDO</button>
@@ -176,6 +180,47 @@
     let puedoAvanzar = true;
     let experienciaIniciada = false;
 
+    // CONTROL DE AUDIO AMBIENTE
+    const audioElement = document.getElementById('audio-ambiente');
+    let audioCtx, track, gainNode;
+
+    function inicializarAudio() {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AudioContext();
+
+      // Conectar elemento <audio> a Web Audio API
+      track = audioCtx.createMediaElementSource(audioElement);
+      gainNode = audioCtx.createGain();
+      gainNode.gain.value = 0.5; // Volumen inicial (50%)
+
+      track.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+
+      // Reproducir audio ambiente en bucle
+      audioElement.play().catch(e => console.log("Autoplay bloqueado por el navegador:", e));
+    }
+
+    function ajustarVolumenAmbiente(paso) {
+      if (!gainNode || !audioCtx) return;
+
+      // Lista de paradas con video (Puntos de interés)
+      const puntosInteres = [3, 6, 9];
+      
+      // Calcular la menor distancia a cualquier punto con video
+      let distanciaMinima = totalPasos;
+      puntosInteres.forEach(p => {
+        const d = Math.abs(paso - p);
+        if (d < distanciaMinima) distanciaMinima = d;
+      });
+
+      // Si estás sobre la foto con video, el ambiente sube al máximo (1.0).
+      // A medida que te alejas, el volumen baja gradualmente hasta un piso base (0.3).
+      let nuevoVolumen = 0.3 + (0.7 * (1 - Math.min(distanciaMinima, 3) / 3));
+
+      // Transición de volumen suave (Fade)
+      gainNode.gain.setTargetAtTime(nuevoVolumen, audioCtx.currentTime, 0.2);
+    }
+
     const mapaVideos = {
       3: { id: "x1bnsYS8mHE", texto: "Video 1" },
       6: { id: "uXTm0gAP2F8", texto: "Video 2" },
@@ -202,8 +247,10 @@
 
     function iniciarExperiencia() {
       precargarSecuencia();
+      inicializarAudio();
       pantallaInicio.classList.add('oculto');
       experienciaIniciada = true;
+      ajustarVolumenAmbiente(pasoActual);
     }
 
     function cambiarFotograma(direccion) {
@@ -220,6 +267,9 @@
       } else {
         imgVisor.src = `${pasoActual}.png`;
       }
+
+      // Dinámica de volumen según cercanía a paradas
+      ajustarVolumenAmbiente(pasoActual);
 
       if (mapaVideos[pasoActual]) {
         txtHotspot.innerText = mapaVideos[pasoActual].texto;
@@ -238,6 +288,11 @@
       const data = mapaVideos[pasoActual];
       if (data) {
         videoAbierto = true;
+        // Atenuar ambiente al 5% mientras suena el video de YouTube
+        if (gainNode && audioCtx) {
+          gainNode.gain.setTargetAtTime(0.05, audioCtx.currentTime, 0.1);
+        }
+
         iframeYT.src = `https://www.youtube.com/embed/${data.id}?autoplay=1`;
         telonModal.style.display = 'flex';
       }
@@ -247,7 +302,9 @@
       iframeYT.src = "";
       telonModal.style.display = 'none';
       
-      // Delay de seguridad de 100ms para evitar que el toque de cierre active el hotspot inmediatamente
+      // Restaurar volumen del ambiente según la foto actual
+      ajustarVolumenAmbiente(pasoActual);
+
       setTimeout(() => {
         videoAbierto = false;
       }, 100);
@@ -275,9 +332,9 @@
 
       if (Math.abs(diferenciaY) > 22) {
         if (diferenciaY > 0) {
-          cambiarFotograma(1);  // Deslizar arriba -> avanza
+          cambiarFotograma(1);
         } else {
-          cambiarFotograma(-1); // Deslizar abajo -> retrocede
+          cambiarFotograma(-1);
         }
         startY = endY;
       }
